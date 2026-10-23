@@ -81,13 +81,10 @@
         async function(teks) {
           if (terkunci) return;
           terkunci = true;
-          if (window.opener && !window.opener.closed) {
+        if (window.opener && !window.opener.closed) {
   window.opener.postMessage(
-    {
-      type: "RPA_QR_SCANNED",
-      value: teks
-    },
-    "https://script.google.com"
+    { type: "RPA_QR_SCANNED", value: teks },
+    "*"
   );
 }
 
