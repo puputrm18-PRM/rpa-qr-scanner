@@ -1,0 +1,136 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPA QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f2f8;
+      color: #172344;
+    }
+    main {
+      max-width: 520px;
+      margin: auto;
+      padding: 20px;
+      background: white;
+      border-radius: 18px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border: 0;
+      border-radius: 12px;
+      background: #172344;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    #hasil { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <h2>RPA QR SCANNER</h2>
+  <p>Arahkan kamera ke label QR barang.</p>
+
+  <button id="mulai" onclick="mulai()">BUKA KAMERA</button>
+  <div id="reader"></div>
+  <p id="status">Kamera belum dibuka.</p>
+  <p id="hasil"></p>
+  <button onclick="salin()">SALIN KODE QR</button>
+  <button onclick="tutup()">TUTUP KAMERA</button>
+</main>
+
+<script>
+  let scanner = null;
+  let kodeQR = "";
+  let terkunci = false;
+
+  async function mulai() {
+    const status = document.getElementById("status");
+
+    if (!window.isSecureContext ||
+        !navigator.mediaDevices?.getUserMedia) {
+      status.textContent =
+        "Halaman harus berjalan pada HTTPS dan mendukung kamera.";
+      return;
+    }
+
+    if (typeof Html5Qrcode === "undefined") {
+      status.textContent =
+        "Library QR gagal dimuat. Periksa koneksi internet.";
+      return;
+    }
+
+    try {
+      await tutup();
+      terkunci = false;
+      scanner = new Html5Qrcode("reader");
+      status.textContent = "Meminta izin kamera...";
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        async function(teks) {
+          if (terkunci) return;
+          terkunci = true;
+          kodeQR = teks;
+
+          document.getElementById("hasil").textContent =
+            "QR terbaca: " + teks;
+          status.textContent = "QR berhasil dibaca.";
+
+          await tutup();
+        },
+        function() {}
+      );
+
+      status.textContent = "Arahkan kamera ke QR label.";
+    } catch (e) {
+      status.textContent =
+        "Gagal membuka kamera: " + (e.name || "periksa izin kamera");
+      console.error(e);
+      await tutup();
+    }
+  }
+
+  async function tutup() {
+    if (!scanner) return;
+
+    const s = scanner;
+    scanner = null;
+
+    try {
+      if (s.isScanning) await s.stop();
+      await s.clear();
+    } catch (e) {
+      console.log(e);
+    }
+  }
+
+  async function salin() {
+    const status = document.getElementById("status");
+
+    if (!kodeQR) {
+      status.textContent = "Belum ada QR yang terbaca.";
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(kodeQR);
+      status.textContent = "Kode QR berhasil disalin.";
+    } catch (e) {
+      status.textContent =
+        "Salin otomatis gagal. Salin kode dari teks QR di atas.";
+    }
+  }
+</script>
+</body>
+</html>
