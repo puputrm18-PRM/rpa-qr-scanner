@@ -81,7 +81,15 @@
         async function(teks) {
           if (terkunci) return;
           terkunci = true;
-          kodeQR = teks;
+          if (window.opener && !window.opener.closed) {
+  window.opener.postMessage(
+    {
+      type: "RPA_QR_SCANNED",
+      value: teks
+    },
+    "https://script.google.com"
+  );
+}
 
           document.getElementById("hasil").textContent =
             "QR terbaca: " + teks;
