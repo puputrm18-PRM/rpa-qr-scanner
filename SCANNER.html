@@ -47,25 +47,46 @@
     return /back|rear|environment|belakang|environmental/i.test(camera.label || '');
   }
 
-  async function deliver(code) {
-    if (locked) return;
-    locked = true;
-    resultEl.textContent = code;
-    status('QR terbaca. Mengirim kode ke aplikasi RPA…');
-    try {
-      if (scanner && scanner.isScanning) await scanner.stop();
-    } catch (e) { /* kamera bisa saja sudah berhenti */ }
-    try { if (scanner) await scanner.clear(); } catch (e) { /* abaikan */ }
+  
+async function deliver(code) {
+  if (locked) return;
+  locked = true;
 
-    if (window.opener && !window.opener.closed) {
-      // INDEX.html memeriksa event.origin (asal pesan), bukan targetOrigin.
-      // Wildcard diperlukan karena URL deployment Apps Script dapat berbeda antar deployment.
-      window.opener.postMessage({ type: 'RPA_QR_SCANNED', value: code }, '*');
-      status('QR ' + code + ' sudah dikirim ke RPA WMS. Periksa daftar barang di jendela RPA. Jendela ini tidak ditutup otomatis.');
-    } else {
-      status('QR terbaca: ' + code + ', tetapi jendela RPA tidak terhubung. Tutup halaman ini dan buka scanner dari tombol SCAN QR di RPA WMS.');
+  resultEl.textContent = code;
+  status('QR terbaca. Mengirim kode ke aplikasi RPA…');
+
+  try {
+    if (scanner && scanner.isScanning) {
+      await scanner.stop();
     }
+  } catch (e) {}
+
+  try {
+    if (scanner) await scanner.clear();
+  } catch (e) {}
+
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage(
+      { type: 'RPA_QR_SCANNED', value: code },
+      '*'
+    );
+
+    status('QR ' + code + ' berhasil dikirim. Menutup scanner…');
+
+    // Beri waktu singkat agar pesan diterima jendela RPA.
+    setTimeout(() => {
+      window.close();
+    }, 300);
+  } else {
+    status(
+      'QR terbaca: ' + code +
+      ', tetapi jendela RPA tidak terhubung. ' +
+      'Buka scanner melalui tombol SCAN QR di RPA WMS.'
+    );
+    locked = false;
   }
+}
+
 
   async function onScanSuccess(decodedText) {
     const raw = String(decodedText || '').trim();
