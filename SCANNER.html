@@ -331,7 +331,7 @@ function prosesQR(teks) {
     if (window.opener && !window.opener.closed) {
       // Pertahankan format pesan yang digunakan RPHU WMS sebelumnya.
       window.opener.postMessage({
-        type: "RPHU_QR_SCANNED",
+        type: "RPA_QR_SCANNED",
         value: kodeQR
       }, "*");
 
