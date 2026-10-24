@@ -6,21 +6,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RPA QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
+
   <style>
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      padding: 20px;
+      padding: 16px;
       font-family: Arial, sans-serif;
       background: #f5f2f8;
       color: #172344;
     }
+
     main {
-      max-width: 520px;
+      max-width: 560px;
       margin: auto;
       padding: 20px;
       background: white;
       border-radius: 18px;
     }
+
     button {
       width: 100%;
       padding: 14px;
@@ -31,20 +36,43 @@
       color: white;
       font-size: 16px;
       font-weight: bold;
+      cursor: pointer;
     }
-    #reader { width: 100%; }
-    #hasil { overflow-wrap: anywhere; }
+
+    button:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    #status {
+      font-weight: bold;
+      line-height: 1.5;
+    }
+
+    #hasil {
+      overflow-wrap: anywhere;
+      font-size: 20px;
+      font-weight: bold;
+    }
   </style>
 </head>
+
 <body>
 <main>
   <h2>RPA QR SCANNER</h2>
-  <p>Arahkan kamera ke label QR barang.</p>
+  <p>Arahkan kamera ke QR label barang. Pastikan QR terlihat jelas dan tidak silau.</p>
 
   <button id="mulai" type="button" onclick="mulai()">BUKA KAMERA</button>
   <div id="reader"></div>
   <p id="status">Kamera belum dibuka.</p>
   <p id="hasil"></p>
+
   <button type="button" onclick="salin()">SALIN KODE QR</button>
   <button type="button" onclick="tutup()">TUTUP KAMERA</button>
 </main>
@@ -54,124 +82,181 @@ let scanner = null;
 let kodeQR = "";
 let terkunci = false;
 let sedangMulai = false;
+let sedangTutup = false;
+
+const statusEl = document.getElementById("status");
+const hasilEl = document.getElementById("hasil");
+const tombolMulai = document.getElementById("mulai");
 
 async function mulai() {
-  const status = document.getElementById("status");
-  const tombol = document.getElementById("mulai");
-
-  if (sedangMulai) return;
+  if (sedangMulai || scanner) return;
 
   if (!window.isSecureContext ||
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia) {
-    status.textContent =
-      "Kamera tidak tersedia. Buka halaman GitHub Pages melalui HTTPS.";
+    statusEl.textContent =
+      "Kamera perlu HTTPS. Buka halaman GitHub Pages.";
     return;
   }
 
   if (typeof Html5Qrcode === "undefined") {
-    status.textContent =
+    statusEl.textContent =
       "Library QR gagal dimuat. Periksa koneksi internet.";
     return;
   }
 
   sedangMulai = true;
-  tombol.disabled = true;
+  tombolMulai.disabled = true;
 
   try {
-    await tutup();
     terkunci = false;
     kodeQR = "";
+    hasilEl.textContent = "";
+    statusEl.textContent = "Membuka kamera...";
 
-    scanner = new Html5Qrcode("reader");
-    status.textContent = "Meminta izin kamera...";
+    scanner = new Html5Qrcode("reader", {
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      verbose: false
+    });
 
+    // Resolusi luwih cetha, area scan luwih amba.
     await scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      async function(teks) {
-        if (terkunci) return;
-
-        terkunci = true;
-        kodeQR = String(teks).trim();
-
-        document.getElementById("hasil").textContent =
-          "QR terbaca: " + kodeQR;
-        status.textContent = "Mengirim hasil QR ke aplikasi RPA...";
-
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            { type: "RPA_QR_SCANNED", value: kodeQR },
-            "*"
+      { facingMode: "user" },
+      {
+        fps: 20,
+        qrbox: function(lebar, dhuwur) {
+          const sisi = Math.floor(
+            Math.min(lebar, dhuwur) * 0.85
           );
-          status.textContent = "QR terbaca dan dikirim ke aplikasi RPA.";
-        } else {
-          status.textContent =
-            "QR terbaca. Jendela aplikasi RPA tidak ditemukan.";
+          return { width: sisi, height: sisi };
+        },
+        aspectRatio: 1,
+        disableFlip: false,
+        videoConstraints: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         }
-
-        await tutup();
       },
-      function() {}
+      function(teks) {
+        prosesQR(teks);
+      },
+      function() {
+        // Ora perlu nampilake error saben frame.
+      }
     );
 
-    status.textContent = "Arahkan kamera ke QR label.";
+    statusEl.textContent =
+      "Kamera aktif. Cedhakake QR nganti katon cetha ing bingkai.";
+
   } catch (e) {
     console.error("Scanner error:", e);
 
-    let pesan = e && e.name ? e.name : "Kesalahan tidak diketahui";
+    const jeneng = e && e.name ? e.name : "";
 
-    if (pesan === "NotAllowedError" || pesan === "PermissionDeniedError") {
-      status.textContent =
-        "Izin kamera ditolak. Izinkan kamera untuk situs GitHub Pages.";
-    } else if (pesan === "NotFoundError" || pesan === "DevicesNotFoundError") {
-      status.textContent = "Kamera tidak ditemukan pada perangkat ini.";
-    } else if (pesan === "NotReadableError" || pesan === "TrackStartError") {
-      status.textContent =
-        "Kamera sedang digunakan aplikasi lain. Tutup aplikasi tersebut.";
+    if (jeneng === "NotAllowedError" ||
+        jeneng === "PermissionDeniedError") {
+      statusEl.textContent =
+        "Izin kamera ditolak. Izinkan kamera ing browser.";
+    } else if (jeneng === "NotFoundError" ||
+               jeneng === "DevicesNotFoundError") {
+      statusEl.textContent =
+        "Kamera ora ditemokake. Priksa kamera laptop.";
+    } else if (jeneng === "NotReadableError" ||
+               jeneng === "TrackStartError") {
+      statusEl.textContent =
+        "Kamera lagi digunakake aplikasi liyane.";
     } else {
-      status.textContent = "Gagal membuka kamera: " + pesan;
+      statusEl.textContent =
+        "Gagal mbukak kamera: " + (e.message || jeneng || "Kesalahan");
     }
 
-    await tutup();
+    await tutupInternal();
+
   } finally {
     sedangMulai = false;
-    tombol.disabled = false;
+    tombolMulai.disabled = false;
   }
 }
 
-async function tutup() {
+function prosesQR(teks) {
+  if (terkunci) return;
+
+  const hasil = String(teks).trim();
+
+  // Format tetep MJL-000014: MJL + 6 digit.
+  if (!/^MJL-\d{6}$/.test(hasil)) {
+    statusEl.textContent =
+      "QR ketemu, nanging format ora cocok. Gunakake label MJL-000014.";
+    return;
+  }
+
+  terkunci = true;
+  kodeQR = hasil;
+  hasilEl.textContent = "QR terbaca: " + kodeQR;
+  statusEl.textContent = "Ngirim QR menyang aplikasi RPA...";
+
+  // Tetep nganggo mekanisme pesen sing wis digunakake aplikasi.
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage(
+      {
+        type: "RPA_QR_SCANNED",
+        value: kodeQR
+      },
+      "https://puputrm18-prm.github.io"
+    );
+
+    statusEl.textContent =
+      "QR " + kodeQR + " kasil dikirim menyang aplikasi RPA.";
+  } else {
+    statusEl.textContent =
+      "QR terbaca, nanging jendela aplikasi RPA ora ditemokake.";
+  }
+
+  // Ora perlu ngenteni kamera rampung mandheg kanggo ngirim QR.
+  tutupInternal();
+}
+
+async function tutupInternal() {
+  if (sedangTutup) return;
+  sedangTutup = true;
+
   const s = scanner;
   scanner = null;
 
-  if (!s) return;
-
   try {
-    if (s.isScanning) await s.stop();
+    if (s && s.isScanning) {
+      await s.stop();
+    }
   } catch (e) {
     console.warn("Stop scanner:", e);
   }
 
   try {
-    await s.clear();
+    if (s) await s.clear();
   } catch (e) {
     console.warn("Clear scanner:", e);
   }
+
+  sedangTutup = false;
+}
+
+async function tutup() {
+  await tutupInternal();
+  tombolMulai.disabled = false;
 }
 
 async function salin() {
-  const status = document.getElementById("status");
-
   if (!kodeQR) {
-    status.textContent = "Belum ada QR yang terbaca.";
+    statusEl.textContent = "Durung ana QR sing kabaca.";
     return;
   }
 
   try {
     await navigator.clipboard.writeText(kodeQR);
-    status.textContent = "Kode QR berhasil disalin.";
+    statusEl.textContent = "Kode QR kasil disalin.";
   } catch (e) {
-    status.textContent = "Kode QR: " + kodeQR;
+    statusEl.textContent = "Kode QR: " + kodeQR;
   }
 }
 </script>
