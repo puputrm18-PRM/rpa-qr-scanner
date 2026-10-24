@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RPA QR Scanner</title>
+  <title>RPHU QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
@@ -28,11 +28,11 @@
 
     button, select {
       width: 100%;
-      padding: 14px;
-      margin: 8px 0;
+      padding: 13px;
+      margin: 7px 0;
       border: 1px solid #d9dce5;
       border-radius: 12px;
-      font-size: 16px;
+      font-size: 15px;
     }
 
     button {
@@ -61,7 +61,7 @@
 
     #hasil {
       overflow-wrap: anywhere;
-      font-size: 20px;
+      font-size: 22px;
       font-weight: bold;
     }
 
@@ -75,36 +75,33 @@
 
 <body>
 <main>
-  <h2>RPA QR SCANNER</h2>
-  <p>Arahkan kamera ke QR barang. Hindari pantulan cahaya dan embun pada lensa.</p>
+  <h2>RPHU QR SCANNER</h2>
+  <p>Arahkan kamera ke label QR barang. Hindari pantulan cahaya dan embun.</p>
 
   <label for="pilihKamera"><b>Pilih kamera:</b></label>
   <select id="pilihKamera">
     <option value="">Mendeteksi kamera...</option>
   </select>
 
-  <button id="mulai" type="button" onclick="mulai()">
-    BUKA KAMERA
-  </button>
-
-  <button id="ganti" type="button" onclick="gantiKamera()" disabled>
-    GANTI KAMERA
-  </button>
+  <button id="mulai" type="button">BUKA KAMERA</button>
+  <button id="ganti" type="button" disabled>GANTI KAMERA</button>
 
   <div id="reader"></div>
-  <p id="status">Siap mendeteksi kamera.</p>
+  <p id="status">Memeriksa kamera...</p>
   <p id="hasil"></p>
 
-  <button type="button" onclick="salin()">SALIN KODE QR</button>
-  <button type="button" onclick="tutup()">TUTUP KAMERA</button>
+  <button id="salin" type="button">SALIN KODE QR</button>
+  <button id="tutup" type="button">TUTUP KAMERA</button>
 
   <p class="info">
-    Format QR yang diterima: MJL-000014. Hasil pembacaan bergantung pada
-    kualitas gambar, fokus, pencahayaan, dan kondisi label.
+    Format QR: MJL-000014. Setelah QR valid terbaca, kode langsung dikirim
+    ke RPHU WMS dan jendela scanner akan mencoba menutup otomatis.
   </p>
 </main>
 
 <script>
+"use strict";
+
 let scanner = null;
 let kodeQR = "";
 let terkunci = false;
@@ -112,12 +109,15 @@ let sedangMulai = false;
 let sedangTutup = false;
 let kameraAktif = "";
 let daftarKamera = [];
-let prosesKamera = 0;
+let nomorProses = 0;
+let timerTutup = null;
 
 const statusEl = document.getElementById("status");
 const hasilEl = document.getElementById("hasil");
 const tombolMulai = document.getElementById("mulai");
 const tombolGanti = document.getElementById("ganti");
+const tombolTutup = document.getElementById("tutup");
+const tombolSalin = document.getElementById("salin");
 const pilihKamera = document.getElementById("pilihKamera");
 
 function status(teks) {
@@ -128,12 +128,12 @@ function validasiLingkungan() {
   if (!window.isSecureContext ||
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia) {
-    status("Kamera memerlukan HTTPS. Buka halaman melalui GitHub Pages.");
+    status("Kamera memerlukan HTTPS. Buka melalui GitHub Pages.");
     return false;
   }
 
   if (typeof Html5Qrcode === "undefined") {
-    status("Library pemindai gagal dimuat. Periksa koneksi internet.");
+    status("Library QR gagal dimuat. Periksa koneksi internet.");
     return false;
   }
 
@@ -143,86 +143,74 @@ function validasiLingkungan() {
 async function deteksiKamera() {
   if (!validasiLingkungan()) return;
 
-  status("Memeriksa kamera yang tersedia...");
-
   try {
+    status("Mendeteksi kamera...");
+
     daftarKamera = await Html5Qrcode.getCameras();
+    pilihKamera.innerHTML = "";
 
     if (!daftarKamera.length) {
-      pilihKamera.innerHTML =
-        '<option value="">Kamera tidak ditemukan</option>';
-      status("Tidak ada kamera terdeteksi. Periksa izin dan koneksi kamera.");
+      pilihKamera.add(new Option("Kamera tidak ditemukan", ""));
+      status("Kamera tidak ditemukan. Periksa izin kamera browser.");
       return;
     }
 
-    pilihKamera.innerHTML = "";
-
     daftarKamera.forEach((kamera, indeks) => {
-      const opsi = document.createElement("option");
-      opsi.value = kamera.id;
-      opsi.textContent = kamera.label || ("Kamera " + (indeks + 1));
-      pilihKamera.appendChild(opsi);
+      pilihKamera.add(new Option(
+        kamera.label || "Kamera " + (indeks + 1),
+        kamera.id
+      ));
     });
 
-    // Prioritaskan kamera dengan label belakang jika tersedia.
-    const kameraBelakang = daftarKamera.find(k =>
+    const belakang = daftarKamera.find(k =>
       /back|rear|environment|belakang|world/i.test(k.label || "")
     );
 
-    pilihKamera.value = kameraBelakang
-      ? kameraBelakang.id
+    pilihKamera.value = belakang
+      ? belakang.id
       : daftarKamera[0].id;
 
     status("Ditemukan " + daftarKamera.length +
-      " kamera. Pilih kamera lalu tekan BUKA KAMERA.");
+      " kamera. Tekan BUKA KAMERA.");
 
   } catch (e) {
     console.error(e);
-    status("Tidak bisa mendeteksi kamera. Periksa izin kamera browser.");
+    status("Gagal mendeteksi kamera. Izinkan akses kamera lalu coba lagi.");
   }
 }
 
 async function mulai() {
-  if (sedangMulai || scanner || sedangTutup) return;
+  if (sedangMulai || scanner || sedangTutup || terkunci) return;
   if (!validasiLingkungan()) return;
 
   sedangMulai = true;
   tombolMulai.disabled = true;
-
-  const idProses = ++prosesKamera;
+  const idProses = ++nomorProses;
 
   try {
-    terkunci = false;
-    kodeQR = "";
-    hasilEl.textContent = "";
-
-    // Perbarui daftar kamera bila belum tersedia.
     if (!daftarKamera.length) {
       daftarKamera = await Html5Qrcode.getCameras();
     }
 
-    if (idProses !== prosesKamera) return;
-
+    if (idProses !== nomorProses) return;
     if (!daftarKamera.length) {
-      throw new Error("Tidak ditemukan kamera yang dapat digunakan.");
+      throw new Error("Tidak ada kamera yang tersedia.");
     }
 
-    let idPilihan = pilihKamera.value;
+    const pilihan = pilihKamera.value;
 
-    // Jika kamera pilihan gagal, coba kamera lain satu per satu.
     const urutan = [
-      ...daftarKamera.filter(k => k.id === idPilihan),
-      ...daftarKamera.filter(k => k.id !== idPilihan)
+      ...daftarKamera.filter(k => k.id === pilihan),
+      ...daftarKamera.filter(k => k.id !== pilihan)
     ];
 
     let berhasil = false;
     let errorTerakhir = null;
 
     for (const kamera of urutan) {
-      if (idProses !== prosesKamera) return;
+      if (idProses !== nomorProses) return;
 
-      status("Mencoba kamera: " +
-        (kamera.label || "kamera terpilih") + "...");
+      status("Mencoba kamera: " + (kamera.label || "kamera tersedia"));
 
       const kandidat = new Html5Qrcode("reader", {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -235,12 +223,8 @@ async function mulai() {
           {
             fps: 15,
             qrbox: function(lebar, tinggi) {
-              // Area luas agar QR yang tidak tepat di tengah tetap terbaca.
               const sisi = Math.floor(Math.min(lebar, tinggi) * 0.9);
-              return {
-                width: Math.max(100, sisi),
-                height: Math.max(100, sisi)
-              };
+              return { width: sisi, height: sisi };
             },
             disableFlip: false
           },
@@ -248,9 +232,15 @@ async function mulai() {
             prosesQR(teks);
           },
           function() {
-            // Kegagalan membaca satu frame bukan kegagalan kamera.
+            // Tetap memindai jika satu frame gagal dibaca.
           }
         );
+
+        if (idProses !== nomorProses) {
+          try { await kandidat.stop(); } catch (_) {}
+          try { await kandidat.clear(); } catch (_) {}
+          return;
+        }
 
         scanner = kandidat;
         kameraAktif = kamera.id;
@@ -259,18 +249,11 @@ async function mulai() {
         break;
 
       } catch (e) {
-        console.warn("Kamera gagal:", kamera.label, e);
+        console.warn("Kamera gagal dibuka:", kamera.label, e);
         errorTerakhir = e;
 
-        try {
-          await kandidat.clear();
-        } catch (_) {}
+        try { await kandidat.clear(); } catch (_) {}
       }
-    }
-
-    if (idProses !== prosesKamera) {
-      await tutupInternal();
-      return;
     }
 
     if (!berhasil) {
@@ -278,27 +261,23 @@ async function mulai() {
     }
 
     tombolGanti.disabled = daftarKamera.length < 2;
-    status(
-      "Kamera aktif. Arahkan QR ke bingkai dan tunggu sampai terbaca."
-    );
+    status("Kamera aktif. Arahkan QR ke kamera.");
 
   } catch (e) {
-    console.error("Scanner error:", e);
+    console.error(e);
 
-    const nama = e && e.name ? e.name : "";
-
-    if (nama === "NotAllowedError" ||
-        nama === "PermissionDeniedError") {
+    if (e && (e.name === "NotAllowedError" ||
+              e.name === "PermissionDeniedError")) {
       status("Izin kamera ditolak. Izinkan akses kamera di browser.");
-    } else if (nama === "NotReadableError" ||
-               nama === "TrackStartError") {
-      status("Kamera sedang dipakai aplikasi lain. Tutup aplikasi tersebut.");
+    } else if (e && (e.name === "NotReadableError" ||
+                     e.name === "TrackStartError")) {
+      status("Kamera sedang digunakan aplikasi lain.");
     } else {
       status("Gagal membuka kamera: " +
-        (e && e.message ? e.message : "Periksa koneksi dan izin kamera."));
+        (e && e.message ? e.message : "Periksa izin kamera."));
     }
 
-    await tutupInternal();
+    await tutupInternal(false);
 
   } finally {
     sedangMulai = false;
@@ -307,22 +286,23 @@ async function mulai() {
 }
 
 async function gantiKamera() {
-  if (sedangMulai || sedangTutup) return;
+  if (sedangMulai || sedangTutup || terkunci) return;
 
-  const aktifSebelumnya = kameraAktif;
-  const berikutnya = daftarKamera.find(k => k.id === pilihKamera.value);
+  const kameraBerikutnya = daftarKamera.find(
+    k => k.id === pilihKamera.value
+  );
 
-  if (!berikutnya) {
-    status("Pilih kamera yang tersedia terlebih dahulu.");
+  if (!kameraBerikutnya) {
+    status("Pilih kamera terlebih dahulu.");
     return;
   }
 
-  if (scanner && berikutnya.id === aktifSebelumnya) {
+  if (kameraBerikutnya.id === kameraAktif) {
     status("Kamera tersebut sudah aktif.");
     return;
   }
 
-  await tutupInternal();
+  await tutupInternal(false);
   await mulai();
 }
 
@@ -331,56 +311,80 @@ function prosesQR(teks) {
 
   const hasil = String(teks).trim();
 
-  // Pertahankan format kode QR MJL-000014.
   if (!/^MJL-\d{6}$/.test(hasil)) {
-    status("QR terdeteksi, tetapi format tidak sesuai MJL-000014.");
+    status("QR terbaca, tetapi format salah. Format yang diterima MJL-000014.");
     return;
   }
 
   terkunci = true;
   kodeQR = hasil;
-  hasilEl.textContent = "QR terbaca: " + kodeQR;
-  status("Mengirim kode QR ke aplikasi RPA...");
+
+  // Kunci langsung untuk mencegah pengiriman ganda.
+  tombolMulai.disabled = true;
+  tombolGanti.disabled = true;
+  hasilEl.textContent = "QR: " + kodeQR;
+  status("QR valid. Mengirim ke RPHU WMS...");
+
+  let terkirim = false;
 
   try {
     if (window.opener && !window.opener.closed) {
-      // Pertahankan mekanisme pesan aplikasi yang sudah ada.
-      window.opener.postMessage(
-        {
-          type: "RPA_QR_SCANNED",
-          value: kodeQR
-        },
-        "*"
-      );
+      // Pertahankan format pesan yang digunakan RPHU WMS sebelumnya.
+      window.opener.postMessage({
+        type: "RPHU_QR_SCANNED",
+        value: kodeQR
+      }, "*");
 
-      status("Kode " + kodeQR +
-        " dikirim. Periksa aplikasi RPA untuk memastikan diterima.");
-    } else {
-      status("QR terbaca, tetapi jendela aplikasi RPA tidak ditemukan.");
+      terkirim = true;
     }
   } catch (e) {
-    console.error(e);
-    status("QR terbaca, tetapi pengiriman pesan gagal.");
+    console.error("Pengiriman QR gagal:", e);
   }
 
-  // Kunci mencegah QR yang sama terkirim berulang kali.
-  tutupInternal();
+  if (terkirim) {
+    status("QR " + kodeQR +
+      " dikirim. Scanner sedang menutup otomatis...");
+  } else {
+    status("QR terbaca, tetapi jendela RPHU WMS tidak terhubung. " +
+      "Scanner tidak akan mengklaim transaksi berhasil.");
+  }
+
+  // Matikan kamera dahulu, lalu coba tutup popup.
+  tutupInternal(false).finally(() => {
+    if (terkirim) {
+      timerTutup = setTimeout(() => {
+        try {
+          window.close();
+        } catch (e) {
+          console.warn("Browser tidak mengizinkan tutup otomatis:", e);
+        }
+
+        // Jika browser menolak window.close(), tampilkan status yang jelas.
+        setTimeout(() => {
+          if (!window.closed) {
+            status("QR sudah dikirim. Browser menolak penutupan otomatis; " +
+              "kamu bisa kembali ke RPHU WMS.");
+            tombolMulai.disabled = false;
+            tombolTutup.disabled = false;
+          }
+        }, 500);
+      }, 250);
+    }
+  });
 }
 
-async function tutupInternal() {
+async function tutupInternal(resetKunci = false) {
   if (sedangTutup) return;
 
   sedangTutup = true;
-  ++prosesKamera;
+  ++nomorProses;
 
   const s = scanner;
   scanner = null;
   kameraAktif = "";
 
   try {
-    if (s && s.isScanning) {
-      await s.stop();
-    }
+    if (s && s.isScanning) await s.stop();
   } catch (e) {
     console.warn("Stop kamera:", e);
   }
@@ -391,19 +395,28 @@ async function tutupInternal() {
     console.warn("Bersihkan scanner:", e);
   }
 
+  if (resetKunci) {
+    terkunci = false;
+    kodeQR = "";
+    hasilEl.textContent = "";
+  }
+
   tombolGanti.disabled = true;
   sedangTutup = false;
 }
 
 async function tutup() {
-  await tutupInternal();
+  if (timerTutup) clearTimeout(timerTutup);
+
+  await tutupInternal(false);
   tombolMulai.disabled = false;
+  tombolTutup.disabled = false;
   status("Kamera ditutup.");
 }
 
 async function salin() {
   if (!kodeQR) {
-    status("Belum ada kode QR yang terbaca.");
+    status("Belum ada QR yang terbaca.");
     return;
   }
 
@@ -414,6 +427,11 @@ async function salin() {
     status("Kode QR: " + kodeQR);
   }
 }
+
+tombolMulai.addEventListener("click", mulai);
+tombolGanti.addEventListener("click", gantiKamera);
+tombolTutup.addEventListener("click", tutup);
+tombolSalin.addEventListener("click", salin);
 
 deteksiKamera();
 </script>
