@@ -303,6 +303,10 @@ async function gantiKamera() {
   }
 
   await tutupInternal(false);
+
+  // Enteni nganti proses nutup kamera rampung.
+  if (sedangTutup || terkunci) return;
+
   await mulai();
 }
 
