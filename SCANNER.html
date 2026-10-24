@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RPHU QR Scanner</title>
+  <title>RPA QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
@@ -75,7 +75,7 @@
 
 <body>
 <main>
-  <h2>RPHU QR SCANNER</h2>
+  <h2>RPA QR SCANNER</h2>
   <p>Arahkan kamera ke label QR barang. Hindari pantulan cahaya dan embun.</p>
 
   <label for="pilihKamera"><b>Pilih kamera:</b></label>
@@ -95,7 +95,7 @@
 
   <p class="info">
     Format QR: MJL-000014. Setelah QR valid terbaca, kode langsung dikirim
-    ke RPHU WMS dan jendela scanner akan mencoba menutup otomatis.
+    ke RPA WMS dan jendela scanner akan mencoba menutup otomatis.
   </p>
 </main>
 
@@ -323,13 +323,13 @@ function prosesQR(teks) {
   tombolMulai.disabled = true;
   tombolGanti.disabled = true;
   hasilEl.textContent = "QR: " + kodeQR;
-  status("QR valid. Mengirim ke RPHU WMS...");
+  status("QR valid. Mengirim ke RPA WMS...");
 
   let terkirim = false;
 
   try {
     if (window.opener && !window.opener.closed) {
-      // Pertahankan format pesan yang digunakan RPHU WMS sebelumnya.
+      // Pertahankan format pesan yang digunakan RPA WMS sebelumnya.
       window.opener.postMessage({
         type: "RPA_QR_SCANNED",
         value: kodeQR
@@ -345,7 +345,7 @@ function prosesQR(teks) {
     status("QR " + kodeQR +
       " dikirim. Scanner sedang menutup otomatis...");
   } else {
-    status("QR terbaca, tetapi jendela RPHU WMS tidak terhubung. " +
+    status("QR terbaca, tetapi jendela RPA WMS tidak terhubung. " +
       "Scanner tidak akan mengklaim transaksi berhasil.");
   }
 
@@ -363,7 +363,7 @@ function prosesQR(teks) {
         setTimeout(() => {
           if (!window.closed) {
             status("QR sudah dikirim. Browser menolak penutupan otomatis; " +
-              "kamu bisa kembali ke RPHU WMS.");
+              "kamu bisa kembali ke RPA WMS.");
             tombolMulai.disabled = false;
             tombolTutup.disabled = false;
           }
