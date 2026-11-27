@@ -37,7 +37,11 @@
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const qrRegionId = 'reader';
-  const qrPattern = /MJL-\d{6}/i;
+  const qrPatterns = [
+  /^KRG-\d{8}-\d{6}$/i,
+  /^KRAT-\d{8}-\d{6}$/i,
+  /^PLT-.+$/i
+];
   let scanner = null;
   let locked = false;
   let starting = false;
@@ -89,12 +93,14 @@ async function deliver(code) {
 
   async function onScanSuccess(decodedText) {
     const raw = String(decodedText || '').trim();
-    const match = raw.match(qrPattern);
-    if (!match) {
-      status('QR terbaca, tetapi kode MJL-000000 tidak ditemukan. Isi QR: ' + raw.slice(0, 100));
-      return;
-    }
-    const code = match[0].toUpperCase();
+    const valid = qrPatterns.some(pattern => pattern.test(raw));
+
+if (!valid) {
+  status('Format QR tidak sesuai aturan WMS RPA GIP.');
+  return;
+}
+
+const code = raw.toUpperCase();
     await deliver(code);
   }
 
