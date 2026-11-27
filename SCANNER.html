@@ -67,9 +67,9 @@ async function deliver(code) {
 
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage(
-      { type: 'RPA_QR_SCANNED', value: code },
-      '*'
-    );
+  { type: 'RPA_QR_SCANNED', value: code },
+  window.location.origin
+);
 
     status('QR ' + code + ' berhasil dikirim. Menutup scanner…');
 
